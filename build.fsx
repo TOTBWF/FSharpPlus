@@ -267,31 +267,25 @@ Target.create "PublishNuget" (fun _ ->
 
 
 let fakePath = "packages" </> "FAKE" </> "tools" </> "FAKE.exe"
-let fakeStartInfo script workingDirectory args fsiargs environmentVars =
-    (fun (info: ProcessStartInfo) ->
-        info.FileName <- System.IO.Path.GetFullPath fakePath
-        info.Arguments <- sprintf "%s --fsiargs -d:FAKE %s \"%s\"" args fsiargs script
-        info.WorkingDirectory <- workingDirectory
-        let setVar k v =
-            info.EnvironmentVariables.[k] <- v
-        for (k, v) in environmentVars do
-            setVar k v
-        //setVar "MSBuild" msBuildExe
-        setVar "GIT" Git.CommandHelper.gitPath
-        setVar "FSI" fsiPath)
+let fakeStartInfo script workingDirectory args fsiargs  =
+    let cliArgs = sprintf "%s --fsiargs -d:FAKE %s \"%s\"" args fsiargs script
+    let fullFakePath = Path.GetFullPath fakePath
+    { ExecParams.Empty with
+        Program= if Environment.isWindows then fullFakePath else "mono"
+        CommandLine = if Environment.isWindows then cliArgs else sprintf "%s %s" fullFakePath cliArgs
+        WorkingDir = workingDirectory}
 
 /// Run the given buildscript with FAKE.exe
 let executeFAKEWithOutput workingDirectory script fsiargs envArgs =
     let exitCode =
-        ExecProcessWithLambdas
-            (fakeStartInfo script workingDirectory "" fsiargs envArgs)
-            TimeSpan.MaxValue false ignore ignore
+        Process.shellExec
+            (fakeStartInfo script workingDirectory "" fsiargs)
     System.Threading.Thread.Sleep 1000
     exitCode
 
 // Documentation
 let buildDocumentationTarget fsiargs target =
-    trace (sprintf "Building documentation (%s), this could take some time, please wait..." target)
+    Trace.logf "Building documentation (%s), this could take some time, please wait..." target
     let exit = executeFAKEWithOutput "docsrc/tools" "generate.fsx" fsiargs ["target", target]
     if exit <> 0 then
         failwith "generating reference documentation failed"
@@ -307,10 +301,10 @@ let generateHelp' fail debug =
         else "--define:RELEASE --define:HELP"
     try
         buildDocumentationTarget args "Default"
-        traceImportant "Help generated"
+        Trace.log "Help generated"
     with
     | e when not fail ->
-        traceImportant "generating help documentation failed"
+        Trace.log "generating help documentation failed"
 
 let generateHelp fail =
     generateHelp' fail false
@@ -339,18 +333,6 @@ Target.create "GenerateHelpDebug" (fun _ ->
     generateHelp' true true
 )
 
-Target.create "KeepRunning" (fun _ ->
-    use watcher = !! "docsrc/content/**/*.*" |> WatchChanges (fun changes ->
-         generateHelp' true true
-    )
-
-    traceImportant "Waiting for help edits. Press any key to stop."
-
-    System.Console.ReadKey() |> ignore
-
-    watcher.Dispose()
-)
-
 Target.create "GenerateDocs" ignore
 
 let createIndexFsx lang =
@@ -366,7 +348,7 @@ F# Project Scaffold ({0})
 """
     let targetDir = "docsrc/content" </> lang
     let targetFile = targetDir </> "index.fsx"
-    ensureDirectory targetDir
+    Directory.ensure targetDir
     System.IO.File.WriteAllText(targetFile, System.String.Format(content, lang))
 
 Target.create "AddLangDocs" (fun _ ->
@@ -387,7 +369,7 @@ Target.create "AddLangDocs" (fun _ ->
         if System.IO.File.Exists(langTemplateFileName) then
             failwithf "Documents for specified language '%s' have already been added." lang
 
-        ensureDirectory langTemplateDir
+        Directory.ensure langTemplateDir
         Shell.copy langTemplateDir [ templateDir </> templateFileName ]
 
         createIndexFsx lang)
@@ -401,42 +383,39 @@ Target.create "ReleaseDocs" (fun _ ->
     Shell.cleanDir tempDocsDir
     Repository.cloneSingleBranch "" (gitHome + "/" + gitName + ".git") "gh-pages" tempDocsDir
 
-    Shell.copyRecursive "docs" tempDocsDir true |> tracefn "%A"
-    StageAll tempDocsDir
-    Git.Commit.Commit tempDocsDir (sprintf "Update generated documentation for version %s" release.NugetVersion)
+    Shell.copyRecursive "docs" tempDocsDir true |> Trace.logfn "%A"
+    Git.Staging.stageAll tempDocsDir
+    Git.Commit.exec tempDocsDir (sprintf "Update generated documentation for version %s" release.NugetVersion)
     Branches.push tempDocsDir
 )
 
-#load "paket-files/fsharp/FAKE/modules/Octokit/Octokit.fsx"
-open Octokit
-
 Target.create "Release" (fun _ ->
     let user =
-        match getBuildParam "github-user" with
+        match Environment.GetEnvironmentVariable "github-user" with
         | s when not (String.IsNullOrWhiteSpace s) -> s
-        | _ -> getUserInput "Username: "
+        | _ -> UserInput.getUserInput "Username: "
     let pw =
-        match getBuildParam "github-pw" with
+        match Environment.GetEnvironmentVariable "github-pw" with
         | s when not (String.IsNullOrWhiteSpace s) -> s
-        | _ -> getUserPassword "Password: "
+        | _ -> UserInput.getUserPassword "Password: "
     let remote =
         Git.CommandHelper.getGitResult "" "remote -v"
         |> Seq.filter (fun (s: string) -> s.EndsWith("(push)"))
         |> Seq.tryFind (fun (s: string) -> s.Contains(gitOwner + "/" + gitName))
         |> function None -> gitHome + "/" + gitName | Some (s: string) -> s.Split().[0]
 
-    StageAll ""
-    Git.Commit.Commit "" (sprintf "Bump version to %s" release.NugetVersion)
+    Git.Staging.stageAll ""
+    Git.Commit.exec "" (sprintf "Bump version to %s" release.NugetVersion)
     Branches.pushBranch "" remote (Information.getBranchName "")
 
     Branches.tag "" release.NugetVersion
     Branches.pushTag "" remote release.NugetVersion
-
+    // See https://github.com/fsharp/FAKE/blob/5.8.5/src/app/Fake.Api.GitHub/GitHub.fs :
     // release on github
-    createClient user pw
-    |> createDraft gitOwner gitName release.NugetVersion (release.SemVer.PreRelease <> None) release.Notes
+    GitHub.createClient user pw
+    |> GitHub.draftNewRelease gitOwner gitName release.NugetVersion (release.SemVer.PreRelease <> None) release.Notes
     // TODO: |> uploadFile "PATH_TO_FILE"
-    |> releaseDraft
+    |>  GitHub.publishDraft
     |> Async.RunSynchronously
 )
 
@@ -459,14 +438,14 @@ Target.create "All" ignore
   ==> "CopyNuGet"
   ==> "BuildPackage"
   ==> "All"
-  =?> ("ReleaseDocs",isLocalBuild)
+  =?> ("ReleaseDocs",BuildServer.isLocalBuild)
 
 "GenerateHelp"
   ==> "GenerateReferenceDocs"
   ==> "GenerateDocs"
 
-"GenerateHelpDebug"
-  ==> "KeepRunning"
+//"GenerateHelpDebug"
+//  ==> "KeepRunning"
 
 "Clean"
   ==> "Release"
@@ -478,4 +457,4 @@ Target.create "All" ignore
 "ReleaseDocs"
   ==> "Release"
 
-RunTargetOrDefault "All"
+Target.runOrDefault "All"
