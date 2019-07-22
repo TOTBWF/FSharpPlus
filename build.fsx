@@ -21,7 +21,6 @@ open Fake.DotNet
 open Fake.IO
 open Fake.IO.FileSystemOperators
 open Fake.IO.Globbing.Operators
-open Fake.Core.TargetOperators
 open Fake.Tools
 open Fake.Core
 open Fake.Api
@@ -414,6 +413,8 @@ Target.create "BuildPackage" ignore
 
 Target.create "All" ignore
 
+open Fake.Core.TargetOperators
+
 "Clean"
   ==> "AssemblyInfo"
   ==> "Restore"
@@ -428,7 +429,8 @@ Target.create "All" ignore
   ==> "All"
   =?> ("ReleaseDocs",BuildServer.isLocalBuild)
 
-"GenerateHelp"
+"CopyBinaries"
+  ==> "GenerateHelp"
   ==> "GenerateReferenceDocs"
   ==> "GenerateDocs"
 
