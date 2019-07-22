@@ -419,7 +419,7 @@ Target.create "All" ignore
   ==> "Restore"
   ==> "Build"
   ==> "CopyBinaries"
-  //==> "RunTests"
+  ==> "RunTests"
   ==> "GenerateReferenceDocs"
   ==> "GenerateDocs"
   ==> "NuGet"
