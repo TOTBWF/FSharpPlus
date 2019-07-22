@@ -1,21 +1,8 @@
 // --------------------------------------------------------------------------------------
 // FAKE build script
 // --------------------------------------------------------------------------------------
-#r "paket:
-nuget Fake.Core.Target
-nuget Fake.DotNet.Cli 
-nuget Fake.Tools.Git
-nuget Fake.DotNet.AssemblyInfoFile
-nuget Fake.Core.ReleaseNotes
-nuget Fake.Core.UserInput
-nuget Fake.DotNet.MSBuild
-nuget Fake.IO.FileSystem
-nuget Fake.DotNet.Fsc
-nuget Fake.Api.GitHub
-nuget Fake.DotNet.Paket
-nuget Fake.DotNet.Testing.NUnit
-nuget Fake.BuildServer.AppVeyor
-nuget Octokit //"
+
+#r "paket: groupref buildfsx //"
 
 #load ".fake/build.fsx/intellisense.fsx"
 
@@ -229,9 +216,10 @@ Target.create "RunTests" (fun _ ->
     !! testAssemblies
     |> NUnit3.run (fun p ->
         { p with
-            //DisableShadowCopy = true
+            ShadowCopy = true
             TimeOut = TimeSpan.FromMinutes 20.
-            OutputDir = "." })
+            ToolPath = "./packages/NUnit.ConsoleRunner/tools/nunit3-console.exe"
+            OutputDir = "./TestResults.xml" })
 (*TODO:
     // Import test result file if on AppVeyor
     if BuildServer.buildServer = AppVeyor then
@@ -431,7 +419,7 @@ Target.create "All" ignore
   ==> "Restore"
   ==> "Build"
   ==> "CopyBinaries"
-  ==> "RunTests"
+  //==> "RunTests"
   ==> "GenerateReferenceDocs"
   ==> "GenerateDocs"
   ==> "NuGet"
