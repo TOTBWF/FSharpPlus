@@ -9,11 +9,9 @@ nuget FSharp.Formatting ~> 3.0.0-beta08
 github fsharp/FAKE modules/Octokit/Octokit.fsx
 
 nuget MathNet.Numerics.FSharp redirects: force
-nuget NUnit ~> 3.11.0
-nuget NUnit.ConsoleRunner ~> 3.10.0
+nuget NUnit ~> 2
+nuget NUnit.Runners ~> 2
 nuget FsCheck
-nuget NUnit3TestAdapter ~> 3.11.0
-nuget Microsoft.NET.Test.Sdk ~> 15.9.0
 # docs:
 nuget FAKE ~> 4.63.2
 

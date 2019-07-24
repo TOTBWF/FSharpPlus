@@ -217,8 +217,8 @@ Target.create "RunTests" (fun _ ->
         { p with
             ShadowCopy = true
             TimeOut = TimeSpan.FromMinutes 20.
-            ToolPath = "./packages/NUnit.ConsoleRunner/tools/nunit3-console.exe"
-            OutputDir = "./TestResults.xml" })
+            ToolPath = "./packages/NUnit.Runners/tools/nunit-console.exe"
+            OutputDir = "./" })
 (*TODO:
     // Import test result file if on AppVeyor
     if BuildServer.buildServer = AppVeyor then
